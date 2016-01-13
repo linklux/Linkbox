@@ -16,7 +16,7 @@
 #define PORT "3490"
 
 #define BACKLOG 10
-#define CHUNK_SIZE 256
+#define CHUNK_SIZE 4096
 
 void sigchld_handler(int s) {
 	int saved_errno = errno;
@@ -33,15 +33,18 @@ void *get_in_addr(struct sockaddr *sa) {
 	return &(((struct sockaddr_in6*)sa)->sin6_addr);
 }
 
+void writeFile() {
+
+}
+
 // TODO split up this massive function
 int main(void) {
 	int sockfd, new_fd, numbytes, rv, yes = 1; 
 	char s[INET6_ADDRSTRLEN], chunk_data[CHUNK_SIZE];
-	socklen_t sin_size;
-
 	struct addrinfo hints, *servinfo, *p;
 	struct sockaddr_storage their_addr;
 	struct sigaction sa;
+	socklen_t sin_size;
 
 	memset(&hints, 0, sizeof hints);
 	hints.ai_family = AF_UNSPEC;
@@ -114,17 +117,35 @@ int main(void) {
 		if (!fork()) { // this is the child process
 			close(sockfd); // child doesn't need the listener
 
-			if((numbytes = recv(new_fd, chunk_data, CHUNK_SIZE - 1, 0)) == -1) {
+			// TODO first 'packet' should be a fixed size header, containing information about total size and field
+			// position data. Create the file here and open it for writing 
+			if((numbytes = recv(new_fd, chunk_data, CHUNK_SIZE, 0)) == -1) {
 				perror("recv");
 				exit(1);
 			}
 
-			chunk_data[numbytes] = '\0';
+			printf("First chunk recieved from client: (%i bytes) \n", numbytes);
 
-			printf("Data recieved from client: %s (%i bytes) \n", chunk_data, numbytes);
+			// If the amount of bytes we got are equal the the chunk size, we have stuff qeued, get this stream by
+			// calling recv() again. Repeat this until the received aren't equal to the chunk size anymore, meaning
+			// the stream is finished
+			while(numbytes == CHUNK_SIZE) {
+				char new_chunk_data[CHUNK_SIZE];
+
+				if((numbytes = recv(new_fd, new_chunk_data, CHUNK_SIZE, 0)) == -1) {
+					perror("recv sub");
+					exit(1);
+				}
+
+				// TODO write the received bytes to the openend file. If numbytes != CHUNK_SIZE (end of stream) close the file
+				// and return the url (and later on, the password if selected) to the client
+				printf("Subdata chunk received from client: (%i bytes) \n", numbytes);
+			}
+
+			//chunk_data[numbytes] = '\0';
 
 			close(new_fd);
-			exit(0);
+			break;
 		}
 
 		close(new_fd);  // parent doesn't need this

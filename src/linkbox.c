@@ -14,6 +14,7 @@
 
 #define PORT "3490" 
 #define SERVER_ADDRESS "192.168.2.10"
+#define CHUNK_SIZE 8196
 
 // get sockaddr, IPv4 or IPv6:
 void *get_in_addr(struct sockaddr *sa) {
@@ -23,18 +24,37 @@ void *get_in_addr(struct sockaddr *sa) {
 	return &(((struct sockaddr_in6*)sa)->sin6_addr);
 }
 
-char* getFileBytes(const char *name) {
+char* getFileBytes(const char *name, size_t *length) {
 	FILE *fh = fopen(name, "r");
 
 	fseek(fh, 0, SEEK_END);
-	long length = ftell(fh);
-	char *bytes = malloc(length);
+	*length = ftell(fh);
+	char *bytes = malloc(*length);
 
 	fseek(fh, 0, SEEK_SET);
-	fread(bytes, 1, length, fh);
+	fread(bytes, 1, *length, fh);
 	fclose(fh);
 
 	return bytes;
+}
+
+// Send all bytes in a file, split up if it's too large
+int sendAll(int sfd, char *buffer, size_t length) {
+	ssize_t n;
+	const char *p = buffer;
+
+	while(length > 0) {
+		n = send(sfd, p, length, 0);
+
+		if(n <= 0) break;
+
+		p += n;
+		length -= n;
+
+		printf("Send bytes: %i (%i left) \n", n, length);
+	}
+
+	return n <= 0 ? -1 : 0;
 }
 
 // TODO Split up this massive function
@@ -44,7 +64,7 @@ int main(int argc, char *argv[]) {
 	char s[INET6_ADDRSTRLEN];
 
 	if (argc != 2) {
-		fprintf(stderr,"usage: file path \n");
+		fprintf(stderr,"File path not given, usage: linkbox <path/to/file> \n");
 		exit(1);
 	}
 
@@ -85,14 +105,24 @@ int main(int argc, char *argv[]) {
 	freeaddrinfo(servinfo);
 
 	// TODO if a file is larger than a chunk (256 bytes), split it up
-	char *file_data = getFileBytes(argv[1]);
+	size_t length;
+	char *file_data = getFileBytes(argv[1], &length);
 
-	if((send(sockfd, file_data, strlen(file_data), 0) == -1)) {
-		perror("send");
+	send(sockfd, argv[1], strlen(argv[1]), 0);
+
+	if(sendAll(sockfd, file_data, length) == -1) {
+		perror("Send all");
 		exit(1);
 	}
 
-	printf("Send to server: %s \n", file_data);
+	send(sockfd, "EOF", 3, 0);
+
+	//if((send(sockfd, file_data, strlen(file_data), 0) == -1)) {
+	//	perror("send");
+	//	exit(1);
+	//}
+
+	printf("Transmition successful, total bytes send: %i \n", length);
 
 	close(sockfd);
 
