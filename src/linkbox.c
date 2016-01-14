@@ -14,8 +14,9 @@
 
 #define PORT "3490" 
 
-// TODO read this from a config file
+// TODO read these from a config file
 #define SERVER_ADDRESS "192.168.2.10"
+#define CHUNK_SIZE 256
 
 // TODO include a client ID for authentication
 
@@ -27,18 +28,19 @@ void *get_in_addr(struct sockaddr *sa) {
 	return &(((struct sockaddr_in6*)sa)->sin6_addr);
 }
 
-char* getFileBytes(const char *name, size_t *length) {
-	FILE *fh = fopen(name, "r");
-
-	fseek(fh, 0, SEEK_END);
-	*length = ftell(fh);
-	char *bytes = malloc(*length);
-
-	fseek(fh, 0, SEEK_SET);
-	fread(bytes, 1, *length, fh);
-	fclose(fh);
+char* getFileBytes(FILE *fp, size_t amount, size_t *total_read) {
+	char *bytes = malloc(amount);
+	*total_read = fread(bytes, 1, amount, fp);
 
 	return bytes;
+}
+
+int getFileSize(FILE *fp) {
+	fseek(fp, 0, SEEK_END);
+	size_t length = ftell(fp);
+	fseek(fp, 0, SEEK_SET);
+
+	return length;
 }
 
 int sendAll(int sfd, char *buffer, size_t length) {
@@ -135,21 +137,31 @@ int main(int argc, char *argv[]) {
 	// Cleanup the servinfo struct since we're done with it
 	freeaddrinfo(servinfo);
 
-	size_t length;
-
-	// TODO This will be contrained if a file is too large due to C's maximum object size, read and send in chunks instead
-	char *file_data = getFileBytes(argv[1], &length);
-
+	// Send header required by the server
 	size_t header_bytes = sendHeader(sockfd, argv[1]);
 
-	if(sendAll(sockfd, file_data, length) == -1) {
-		perror("Send all");
-		exit(1);
+	FILE *fp;
+	fp = fopen(argv[1], "r");
+
+	size_t file_size = getFileSize(fp);
+	size_t bytes_left = file_size;
+	size_t total_read;
+
+	while(bytes_left > 0) {
+		char *file_data = getFileBytes(fp, CHUNK_SIZE * 1000, &total_read);
+
+		if(sendAll(sockfd, file_data, total_read) == -1) {
+			perror("Send all");
+			exit(1);
+		}
+
+		file_data += total_read;
+		bytes_left -= total_read;
 	}
 
 	// TODO receive and print server response, a simple progress bar with large files (pacman style?)
-	
-	printf("Transmission successful, total bytes send: %i \n", header_bytes + length);
+
+	printf("Transmission successful, total bytes send: %i \n", header_bytes + file_size);
 
 	close(sockfd);
 
