@@ -13,8 +13,11 @@
 #include <arpa/inet.h>
 
 #define PORT "3490" 
+
+// TODO read this from a config file
 #define SERVER_ADDRESS "192.168.2.10"
-#define CHUNK_SIZE 8196
+
+// TODO include a client ID for authentication
 
 // get sockaddr, IPv4 or IPv6:
 void *get_in_addr(struct sockaddr *sa) {
@@ -38,12 +41,11 @@ char* getFileBytes(const char *name, size_t *length) {
 	return bytes;
 }
 
-// Send all bytes in a file, split up if it's too large
 int sendAll(int sfd, char *buffer, size_t length) {
 	ssize_t n;
 	const char *p = buffer;
 
-	while(length > 0) {
+	for(;;) {
 		n = send(sfd, p, length, 0);
 
 		if(n <= 0) break;
@@ -52,9 +54,38 @@ int sendAll(int sfd, char *buffer, size_t length) {
 		length -= n;
 
 		printf("Send bytes: %i (%i left) \n", n, length);
+
+		if(length <= 0) break;
 	}
 
 	return n <= 0 ? -1 : 0;
+}
+
+/* Send the header information required by the server to proces the stream. This only includes 
+ * the and desired file name for now */
+int sendHeader(int sfd, char *filename) {
+	size_t header_size = strlen(filename) + 4;
+
+	char header[header_size];
+	strcpy(header, filename);
+
+	uint32_t header_size_network = htonl(header_size);
+
+	if(send(sfd, &header_size_network, sizeof(header_size_network), 0) == -1) {
+		perror("send header size");
+		exit(1);
+	}
+
+	printf("Send header size to server (%i bytes) \n", header_size);
+
+	if(send(sfd, header, header_size, 0) == -1) {
+		perror("send header data");
+		exit(1);
+	}
+
+	printf("Send header data to server: %s \n", header);
+
+	return sizeof(header_size_network) + header_size;
 }
 
 // TODO Split up this massive function
@@ -104,25 +135,21 @@ int main(int argc, char *argv[]) {
 	// Cleanup the servinfo struct since we're done with it
 	freeaddrinfo(servinfo);
 
-	// TODO if a file is larger than a chunk (256 bytes), split it up
 	size_t length;
+
+	// TODO This will be contrained if a file is too large due to C's maximum object size, read and send in chunks instead
 	char *file_data = getFileBytes(argv[1], &length);
 
-	send(sockfd, argv[1], strlen(argv[1]), 0);
+	size_t header_bytes = sendHeader(sockfd, argv[1]);
 
 	if(sendAll(sockfd, file_data, length) == -1) {
 		perror("Send all");
 		exit(1);
 	}
 
-	send(sockfd, "EOF", 3, 0);
-
-	//if((send(sockfd, file_data, strlen(file_data), 0) == -1)) {
-	//	perror("send");
-	//	exit(1);
-	//}
-
-	printf("Transmition successful, total bytes send: %i \n", length);
+	// TODO receive and print server response, a simple progress bar with large files (pacman style?)
+	
+	printf("Transmission successful, total bytes send: %i \n", header_bytes + length);
 
 	close(sockfd);
 
