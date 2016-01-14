@@ -15,8 +15,8 @@
 #define PORT "3490" 
 
 // TODO read these from a config file
-#define SERVER_ADDRESS "192.168.2.10"
-#define CHUNK_SIZE 256
+#define SERVER_ADDRESS "linksoft.io"
+#define CHUNK_SIZE 64000
 
 // TODO include a client ID for authentication
 
@@ -65,20 +65,27 @@ int sendAll(int sfd, char *buffer, size_t length) {
 
 /* Send the header information required by the server to proces the stream. This only includes 
  * the and desired file name for now */
-int sendHeader(int sfd, char *filename) {
+int sendHeader(int sfd, char *filename, size_t file_size) {
 	size_t header_size = strlen(filename) + 4;
 
 	char header[header_size];
 	strcpy(header, filename);
 
 	uint32_t header_size_network = htonl(header_size);
+	uint32_t file_size_network = htonl(file_size);
 
+	// TODO the header and file size headers can probably be send of in one go
 	if(send(sfd, &header_size_network, sizeof(header_size_network), 0) == -1) {
 		perror("send header size");
 		exit(1);
 	}
 
-	printf("Send header size to server (%i bytes) \n", header_size);
+	if(send(sfd, &file_size_network, sizeof(file_size_network), 0) == -1) {
+		perror("send file size");
+		exit(1);
+	}
+
+	printf("Send header & file sizes to server: %i & %i bytes \n", header_size, file_size);
 
 	if(send(sfd, header, header_size, 0) == -1) {
 		perror("send header data");
@@ -137,9 +144,6 @@ int main(int argc, char *argv[]) {
 	// Cleanup the servinfo struct since we're done with it
 	freeaddrinfo(servinfo);
 
-	// Send header required by the server
-	size_t header_bytes = sendHeader(sockfd, argv[1]);
-
 	FILE *fp;
 	fp = fopen(argv[1], "r");
 
@@ -147,8 +151,11 @@ int main(int argc, char *argv[]) {
 	size_t bytes_left = file_size;
 	size_t total_read;
 
+	// Send header required by the server
+	size_t header_bytes = sendHeader(sockfd, argv[1], file_size);
+
 	while(bytes_left > 0) {
-		char *file_data = getFileBytes(fp, CHUNK_SIZE * 1000, &total_read);
+		char *file_data = getFileBytes(fp, CHUNK_SIZE, &total_read);
 
 		if(sendAll(sockfd, file_data, total_read) == -1) {
 			perror("Send all");

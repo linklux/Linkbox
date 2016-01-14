@@ -19,6 +19,7 @@
 #define CHUNK_SIZE 4096
 
 // TODO create a list of allowed clients and deny connections from other clients
+// TODO create custom send and recv functions, error checks are constantly the same
 
 void sigchld_handler(int s) {
 	int saved_errno = errno;
@@ -114,21 +115,28 @@ int main(void) {
 
 		if (!fork()) { // this is the child process
 			close(sockfd); // child doesn't need the listener
-			uint32_t header_size_network[sizeof(uint32_t)];
-			uint32_t header_size;
+			uint32_t header_size_network[sizeof(uint32_t)], file_size_network[sizeof(uint32_t)];
+			uint32_t header_size, file_size;
 
-			// Receive the first sizeof(uint32_t) bytes which hold the header byte size
+			// Receive the first sizeof(uint32_t) bytes which holds the header byte size
 			if((recv(new_fd, header_size_network, sizeof(uint32_t), 0)) == -1) {
 				perror("recv header size");
 				exit(1);
 			}
 
+			// Receive the second sizeof(uint32_t) bytes which holds the file byte size
+			if((recv(new_fd, file_size_network, sizeof(uint32_t), 0)) == -1) {
+				perror("recv file size");
+				exit(1);
+			}
+
 			// The size data is encoded using the htonl, so let's decode it again
 			header_size = ntohl(*header_size_network);
-			printf("Header size received from client: %i bytes, reading header data \n", header_size);
+			file_size = ntohl(*file_size_network);
+			printf("Header & file size received from client: %i & %i bytes, reading header data \n", header_size, file_size);
 			char header_data[header_size];
 
-			// We now have the header size, let's receive the header data
+			// We now have the header and file sizes, let's receive the header data
 			if(recv(new_fd, header_data, header_size, 0) == -1) {
 				perror("recv header data");
 				exit(1);
@@ -148,7 +156,7 @@ int main(void) {
 			/* If the amount of bytes we got are equal the the chunk size, we have stuff qeued, get this stream by
 			 * calling recv() again. Repeat this until the received bytes aren't equal to the chunk size anymore, meaning
 			 * the stream is finished */
-			while(numbytes == CHUNK_SIZE) {
+			while(file_size > 0) {
 				char new_chunk_data[CHUNK_SIZE];
 
 				if((numbytes = recv(new_fd, new_chunk_data, CHUNK_SIZE, 0)) == -1) {
@@ -159,6 +167,8 @@ int main(void) {
 				fwrite(new_chunk_data, 1, numbytes, fp);
 
 				printf("Subdata chunk received from client: (%i bytes) \n", numbytes);
+
+				file_size -= numbytes;
 			}
 
 			// Close the file pointer since we're done with it
@@ -167,7 +177,7 @@ int main(void) {
 			// TODO the url of the uploaded file back to the client
 			close(new_fd);
 
-			printf("File transmission successfully finished, closing file");
+			printf("File transmission successfully finished, closing file \n");
 
 			break;
 		}
