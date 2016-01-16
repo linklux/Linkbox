@@ -110,8 +110,8 @@ int main(void) {
 			continue;
 		}
 
+		// Get the IP dot presentation (human readable IP)
 		inet_ntop(their_addr.ss_family, get_in_addr((struct sockaddr *)&their_addr), s, sizeof s);
-		printf("server: got connection from %s\n", s);
 
 		if (!fork()) { // this is the child process
 			close(sockfd); // child doesn't need the listener
@@ -130,21 +130,18 @@ int main(void) {
 				exit(1);
 			}
 
-			// The size data is encoded using the htonl, so let's decode it again
+			// The size data is encoded using the htonl encoding, so let's decode it again
 			header_size = ntohl(*header_size_network);
 			file_size = ntohl(*file_size_network);
-			printf("Header & file size received from client: %i & %i bytes, reading header data \n", header_size, file_size);
 			char header_data[header_size];
 
-			// We now have the header and file sizes, let's receive the header data
+			// We now have the header and file sizes, receive the header data
 			if(recv(new_fd, header_data, header_size, 0) == -1) {
 				perror("recv header data");
 				exit(1);
 			}
 
-			printf("Received header data: %s \n", header_data);
-
-			numbytes = CHUNK_SIZE;
+			printf("%s: preparing for file transmission '%s' (%i KiB) \n", s, header_data, file_size / 1024);
 
 			/* Create and open the file and the file pointer for writing
 			 * TODO check if the file already exists, if so generate a new name. Maybe generate a random name 
@@ -153,31 +150,40 @@ int main(void) {
 			FILE *fp;
 			fp = fopen(header_data, "w+");
 
-			/* If the amount of bytes we got are equal the the chunk size, we have stuff qeued, get this stream by
-			 * calling recv() again. Repeat this until the received bytes aren't equal to the chunk size anymore, meaning
-			 * the stream is finished */
+			/* Receive the file data in chunks and write it to the file, if we have stuff qeued, get this stream by
+			 * calling recv() again. Repeat this until the filesize is 0, meaning the stream is finished */
 			while(file_size > 0) {
-				char new_chunk_data[CHUNK_SIZE];
+				char chunk_data[CHUNK_SIZE];
 
-				if((numbytes = recv(new_fd, new_chunk_data, CHUNK_SIZE, 0)) == -1) {
+				if((numbytes = recv(new_fd, chunk_data, CHUNK_SIZE, 0)) == -1) {
 					perror("recv sub");
 					exit(1);
 				}
 
-				fwrite(new_chunk_data, 1, numbytes, fp);
-
-				printf("Subdata chunk received from client: (%i bytes) \n", numbytes);
-
 				file_size -= numbytes;
+				fwrite(chunk_data, 1, numbytes, fp);
+
+				// printf("Subdata chunk received from client: (%i bytes) \n", numbytes);
 			}
 
 			// Close the file pointer since we're done with it
 			fclose(fp);
 
-			// TODO the url of the uploaded file back to the client
-			close(new_fd);
+			// Build the client response
+			char client_response[256];
+			strcpy(client_response, "http://link.linksoft.io/");
+			strcat(client_response, header_data);
 
-			printf("File transmission successfully finished, closing file \n");
+			// Send the client response
+			if(send(new_fd, client_response, sizeof client_response, 0) == -1) {
+				perror("send client response");
+				exit(1);
+			}
+
+			// We're finished with this client, close the connection and wait for the next connection
+			printf("%s: file transmission successfully finished, closing connection \n", s);
+
+			close(new_fd);
 
 			break;
 		}

@@ -16,7 +16,7 @@
 
 // TODO read these from a config file
 #define SERVER_ADDRESS "linksoft.io"
-#define CHUNK_SIZE 64000
+#define CHUNK_SIZE 8192
 
 // TODO include a client ID for authentication
 
@@ -47,7 +47,7 @@ int sendAll(int sfd, char *buffer, size_t length) {
 	ssize_t n;
 	const char *p = buffer;
 
-	for(;;) {
+	while(length > 0) {
 		n = send(sfd, p, length, 0);
 
 		if(n <= 0) break;
@@ -55,9 +55,7 @@ int sendAll(int sfd, char *buffer, size_t length) {
 		p += n;
 		length -= n;
 
-		printf("Send bytes: %i (%i left) \n", n, length);
-
-		if(length <= 0) break;
+		// if(length <= 0) break;
 	}
 
 	return n <= 0 ? -1 : 0;
@@ -74,34 +72,34 @@ int sendHeader(int sfd, char *filename, size_t file_size) {
 	uint32_t header_size_network = htonl(header_size);
 	uint32_t file_size_network = htonl(file_size);
 
-	// TODO the header and file size headers can probably be send of in one go
+	// Send the header size header
 	if(send(sfd, &header_size_network, sizeof(header_size_network), 0) == -1) {
 		perror("send header size");
 		exit(1);
 	}
 
+	// Send the file size header
 	if(send(sfd, &file_size_network, sizeof(file_size_network), 0) == -1) {
 		perror("send file size");
 		exit(1);
 	}
 
-	printf("Send header & file sizes to server: %i & %i bytes \n", header_size, file_size);
-
+	// Send the header data (just the filename for now)
 	if(send(sfd, header, header_size, 0) == -1) {
 		perror("send header data");
 		exit(1);
 	}
-
-	printf("Send header data to server: %s \n", header);
 
 	return sizeof(header_size_network) + header_size;
 }
 
 // TODO Split up this massive function
 int main(int argc, char *argv[]) {
-	int sockfd, numbytes, rv;  
+	int sockfd, rfd, numbytes, rv;  
 	struct addrinfo hints, *servinfo, *p;
-	char s[INET6_ADDRSTRLEN];
+	struct sockaddr_storage server_addr;
+	char s[INET6_ADDRSTRLEN], server_response[256];
+	socklen_t sin_size;
 
 	if (argc != 2) {
 		fprintf(stderr,"File path not given, usage: linkbox <path/to/file> \n");
@@ -138,9 +136,6 @@ int main(int argc, char *argv[]) {
 		return 2;
 	}
 
-	inet_ntop(p->ai_family, get_in_addr((struct sockaddr *)p->ai_addr), s, sizeof s);
-	printf("client: connecting to %s\n", s);
-
 	// Cleanup the servinfo struct since we're done with it
 	freeaddrinfo(servinfo);
 
@@ -149,11 +144,12 @@ int main(int argc, char *argv[]) {
 
 	size_t file_size = getFileSize(fp);
 	size_t bytes_left = file_size;
-	size_t total_read;
+	size_t total_read, total_send = 0;
 
-	// Send header required by the server
+	// Send the header to the server
 	size_t header_bytes = sendHeader(sockfd, argv[1], file_size);
 
+	// Read and send the file, split it up in chunks if nessecary
 	while(bytes_left > 0) {
 		char *file_data = getFileBytes(fp, CHUNK_SIZE, &total_read);
 
@@ -164,12 +160,22 @@ int main(int argc, char *argv[]) {
 
 		file_data += total_read;
 		bytes_left -= total_read;
+		total_send += total_read;
+
+		printf("\rSending: %i/%i KiB", (header_bytes + total_send) / 1024, (header_bytes + file_size) / 1024);
 	}
 
-	// TODO receive and print server response, a simple progress bar with large files (pacman style?)
+	printf(" Done! \n Waiting for server response... ");
 
-	printf("Transmission successful, total bytes send: %i \n", header_bytes + file_size);
+	// File transmission complete, wait for the server to respond. After that, close the socket and exit
+	if(recv(sockfd, server_response, sizeof(server_response), 0) == -1) {
+		perror("recv response");
+		exit(1);
+	}
 
+	// Make sure the line is 'empty', fill it with spaces in case the response is too short to fill it up
+	printf("                                         ");
+	printf("\r%s \n", server_response);
 	close(sockfd);
 
 	return 0;
