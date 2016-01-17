@@ -140,7 +140,7 @@ int main(int argc, char *argv[]) {
 	freeaddrinfo(servinfo);
 
 	FILE *fp;
-	fp = fopen(argv[1], "r");
+	fp = fopen(argv[1], "rb");
 
 	size_t file_size = getFileSize(fp);
 	size_t bytes_left = file_size;

@@ -148,7 +148,7 @@ int main(void) {
 			 * in the first place (hashed clientID+filename+timestamp?)
 			 * TODO put the file in the desired folder, make this a config file entry */
 			FILE *fp;
-			fp = fopen(header_data, "w+");
+			fp = fopen(header_data, "w+b");
 
 			/* Receive the file data in chunks and write it to the file, if we have stuff qeued, get this stream by
 			 * calling recv() again. Repeat this until the filesize is 0, meaning the stream is finished */
