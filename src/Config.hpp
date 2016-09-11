@@ -7,13 +7,13 @@
 class Config {
 
     public:
-        Config();
+        Config(const char * file);
 
         bool init();
         std::string getProperty(std::string key);
 
     private:
-        char* conf_file;
+        std::string conf_file;
         std::map<std::string, std::string> conf;
 
 };

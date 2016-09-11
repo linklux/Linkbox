@@ -1,36 +1,29 @@
 #include <stddef.h>
-#include <stdio.h>
-#include <stdlib.h>
+#include <cstdlib>
 #include <string>
 
 #include "Config.hpp"
 #include "Network.hpp"
+#include "Utils.hpp"
 
 #define CHUNK_SIZE 4096
 
 // TODO User authentication
 // TODO File hash verification
 
-void debug(const char* msg, bool terminate) {
-    printf("[DEBUG] %s\n", msg);
-
-    if (terminate)
-        exit(1);
-}
-
 int main(int argc, char *argv[]) {
-    Config conf;
+    Config conf("/.linkbox/linkbox.conf");
 
     if (!conf.init())
-        debug("Failed to read config file", true);
+        exit(1);
 
     Network net(conf.getProperty("server"), conf.getProperty("port"));
 
     if (!net.init())
-        debug("Failed to initialize connection", true);
+        Utils::error("Failed to initialize connection");
 
     if (argc != 2)
-        debug("File path not given, usage: linkbox <path/to/file>", true);
+        Utils::error("File path not given, usage: linkbox <path/to/file>");
 
     FILE *fp;
     fp = fopen(argv[1], "rb");
@@ -39,13 +32,13 @@ int main(int argc, char *argv[]) {
     size_t file_name_loc = str.find_last_of("/\\");
 
     if (!net.sendFile(fp, str.substr(file_name_loc + 1).c_str()))
-        debug("Failed to complete file transfer", true);
+        Utils::error("Failed to complete file transfer");
 
     char server_response[256];
     if (!net.receive(server_response, sizeof server_response))
-        debug("Failed to receive server response", true);
+        Utils::error("Failed to receive server response");
 
-    printf("%s\n", server_response);
+    Utils::printl(server_response);
 
     fclose(fp);
     net.clean();

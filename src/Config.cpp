@@ -1,26 +1,28 @@
 #include "Config.hpp"
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+#include <cstring>
 
 #include <fstream>
-#include <streambuf>
 #include <sstream>
 
-#define CONF_FILE "/.linkbox/linkbox.conf"
+#include "Utils.hpp"
 
-Config::Config() {
-    char* usr_home = getenv("HOME");
-    char file_loc[(sizeof(usr_home) / sizeof(char)) + (sizeof(CONF_FILE) / sizeof(char))];
+Config::Config(const char * file) {
+    const char* usr_home = getenv("HOME");
+    char file_loc[sizeof(usr_home) + sizeof(file)];
 
     strcpy(file_loc, usr_home);
-    strcat(file_loc, CONF_FILE);
+    strcat(file_loc, file);
 
-    this->conf_file = file_loc;
+    this->conf_file.assign(file_loc);
 }
 
 bool Config::init() {
+    if (!Utils::hasPermissions(this->conf_file.c_str(), Utils::P_READ)) {
+        Utils::error("Configuration file not found or insufficient permissions");
+        return false;
+    }
+
     std::ifstream f_str(this->conf_file);
     std::string str((std::istreambuf_iterator<char>(f_str)), std::istreambuf_iterator<char>());
 
@@ -40,13 +42,15 @@ bool Config::init() {
         if (std::getline(is_line, key, '=')) {
             std::string value;
 
-            if (std::getline(is_line, value)) {
+            if (std::getline(is_line, value))
                 this->conf[key.c_str()] = value.c_str();
-
-                printf("[DEBUG] %s: %s\n", key.c_str(), value.c_str());
-            }
         }
     }
+
+    Utils::setDebugMode(this->getProperty("debug") == "true" ? true : false);
+
+    for (auto& it : conf)
+        Utils::debug((it.first + ": " + it.second).c_str());
 
     return true;
 }

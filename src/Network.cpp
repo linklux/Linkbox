@@ -1,14 +1,14 @@
 #include "Network.hpp"
 
-#include <stdlib.h>
-#include <stdio.h>
+#include <cstdlib>
+#include <iostream>
+#include <cstring>
 
 #include <netdb.h>
 #include <sys/socket.h>
 #include <unistd.h>
-#include <cstring>
 
-#include <iostream>
+#include "Utils.hpp"
 
 #define CHUNK_SIZE 4096
 
@@ -27,7 +27,7 @@ bool Network::init() {
     hints.ai_socktype = SOCK_STREAM;
 
     if ((rv = getaddrinfo(this->server.c_str(), this->port.c_str(), &hints, &servinfo)) != 0) {
-        fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rv));
+        Utils::error(gai_strerror(rv), true);
         return false;
     }
 
@@ -45,10 +45,8 @@ bool Network::init() {
         break;
     }
 
-    if (p == NULL) {
-        fprintf(stderr, "client: failed to connect\n");
-        return 2;
-    }
+    if (p == NULL)
+        Utils::error("Failed to connect to server", true);
 
     freeaddrinfo(servinfo);
 
@@ -116,6 +114,11 @@ bool Network::sendHeader(const char* file_name, size_t file_size) {
 bool Network::sendFile(FILE* fp, const char* file_name) {
     if (!validate())
         return false;
+
+    if (!Utils::hasPermissions(file_name, Utils::P_READ)) {
+        Utils::error("File not found or insufficient permissions");
+        return false;
+    }
 
     fseek(fp, 0, SEEK_END);
     size_t file_size = ftell(fp);
