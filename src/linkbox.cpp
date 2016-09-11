@@ -9,6 +9,7 @@
 #define CHUNK_SIZE 4096
 
 // TODO User authentication
+// TODO File hash verification
 
 void debug(const char* msg, bool terminate) {
     printf("[DEBUG] %s\n", msg);

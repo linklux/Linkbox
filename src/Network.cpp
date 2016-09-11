@@ -2,12 +2,13 @@
 
 #include <stdlib.h>
 #include <stdio.h>
-#include <time.h>
 
 #include <netdb.h>
 #include <sys/socket.h>
 #include <unistd.h>
 #include <cstring>
+
+#include <iostream>
 
 #define CHUNK_SIZE 4096
 
@@ -38,7 +39,6 @@ bool Network::init() {
 
         if (connect(this->sockfd, p->ai_addr, p->ai_addrlen) == -1) {
             close(this->sockfd);
-            perror("client: connect");
             continue;
         }
 
@@ -129,7 +129,8 @@ bool Network::sendFile(FILE* fp, const char* file_name) {
         return false;
     }
 
-    clock_t timer = clock();
+    float last_progress = 0.0f;
+    int bar_width = 70;
 
     while (bytes_left > 0) {
         char* file_data = (char*) malloc(CHUNK_SIZE);
@@ -144,13 +145,27 @@ bool Network::sendFile(FILE* fp, const char* file_name) {
         bytes_left -= total_read;
         total_sent += total_read;
 
-        if ((float) (clock() - timer) > 20.0f) {
-            printf("\rSending: %zi/%zi KiB", (total_sent) / 1024, (file_size) / 1024);
-            timer = clock();
+        // Progress bar ------
+        float progress = (float) total_sent / (float) file_size;
+        if (progress == last_progress)
+            continue;
+
+        std::cout << "[";
+        int pos = bar_width * progress;
+        for (int i = 0; i < bar_width; ++i) {
+            if (i < pos) std::cout << "=";
+            else if (i == pos) std::cout << ">";
+            else std::cout << " ";
         }
+        std::cout << "] " << int(progress * 100.0) << "%\r" << std::flush;
+
+        last_progress = progress;
     }
 
-    printf("\rSending: %zi/%zi KiB Done!\n", file_size / 1024, file_size / 1024); // Cheating, woo!
+    std::cout << "[";
+    for (int i = 0; i < bar_width; ++i)
+        std::cout << "=";
+    std::cout << "] " << "100%" << std::endl;
 
     return true;
 }
