@@ -13,7 +13,7 @@ class Network {
 
         bool sendData(const char* buf, size_t byte_size);
         bool sendHeader(const char* file_name, size_t file_size);
-        bool sendFile(FILE* fp, const char* file_name);
+        bool sendFile(const char* file_name);
 
         bool receive(char* buf, size_t byte_size);
 

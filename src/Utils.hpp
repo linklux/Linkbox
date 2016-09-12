@@ -23,6 +23,8 @@ class Utils {
         static bool getDebugMode() { return debug_mode; };
         static void setDebugMode(bool mode) { debug_mode = mode; };
 
+        static long getFileSize(const char * file);
+
     private:
         static bool debug_mode;
 

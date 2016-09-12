@@ -2,6 +2,7 @@
 
 #include <cstdlib>
 #include <iostream>
+#include <fstream>
 #include <cstring>
 
 #include <netdb.h>
@@ -111,7 +112,7 @@ bool Network::sendHeader(const char* file_name, size_t file_size) {
     return true;
 }
 
-bool Network::sendFile(FILE* fp, const char* file_name) {
+bool Network::sendFile(const char* file_name) {
     if (!validate())
         return false;
 
@@ -120,49 +121,44 @@ bool Network::sendFile(FILE* fp, const char* file_name) {
         return false;
     }
 
-    fseek(fp, 0, SEEK_END);
-    size_t file_size = ftell(fp);
-    fseek(fp, 0, SEEK_SET);
-
-    size_t bytes_left = file_size;
-    size_t total_read, total_sent = 0;
-
+    size_t file_size = Utils::getFileSize(file_name);
     if (!sendHeader(file_name, file_size)) {
         this->error = "Failed to send header";
         return false;
     }
 
+    std::ifstream fin(file_name, std::ifstream::binary);
+    char buffer[CHUNK_SIZE];
+
+    size_t total_sent = 0;
     float last_progress = 0.0f;
     int bar_width = 70;
+    unsigned int read_size = file_size > sizeof(buffer) ? sizeof(buffer) : file_size;
 
-    while (bytes_left > 0) {
-        char* file_data = (char*) malloc(CHUNK_SIZE);
-        total_read = fread(file_data, 1, CHUNK_SIZE, fp);
+    while (read_size != 0 && (fin.read(buffer, read_size))) {
+        std::streamsize s = fin.gcount();
 
-        if (!sendData(file_data, total_read)) {
+        if (!sendData(buffer, s)) {
             this->error = "Failed to send all data";
             return false;
         }
 
-        file_data += total_read;
-        bytes_left -= total_read;
-        total_sent += total_read;
+        total_sent += s;
+        read_size = file_size - total_sent > sizeof(buffer) ? sizeof(buffer) : file_size - total_sent;
 
         // Progress bar ------
         float progress = (float) total_sent / (float) file_size;
-        if (progress == last_progress)
+        if (int(progress * 100.0) == last_progress)
             continue;
 
         std::cout << "[";
         int pos = bar_width * progress;
-        for (int i = 0; i < bar_width; ++i) {
-            if (i < pos) std::cout << "=";
-            else if (i == pos) std::cout << ">";
-            else std::cout << " ";
-        }
+        for (int i = 0; i < bar_width; ++i)
+            std::cout << (i < pos ? "=" : (i == pos ? ">" : " "));
+
         std::cout << "] " << int(progress * 100.0) << "%\r" << std::flush;
 
-        last_progress = progress;
+        last_progress = int(progress * 100.0);
     }
 
     std::cout << "[";

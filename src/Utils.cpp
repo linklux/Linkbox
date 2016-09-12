@@ -1,6 +1,7 @@
 #include "Utils.hpp"
 
 #include <iostream>
+#include <sys/stat.h>
 
 bool Utils::debug_mode = false;
 
@@ -52,4 +53,17 @@ bool Utils::hasPermissions(const char * path, int permissions) {
         return false;
 
     return access(path, permissions) == 0;
+}
+
+/**
+ * Returns the file size for the given file.
+ */
+long Utils::getFileSize(const char * file) {
+    if (!Utils::exists(file))
+        return -1;
+
+    struct stat stat_buf;
+    int rc = stat(file, &stat_buf);
+
+    return rc == 0 ? stat_buf.st_size : -1;
 }

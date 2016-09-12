@@ -25,22 +25,18 @@ int main(int argc, char *argv[]) {
     if (argc != 2)
         Utils::error("File path not given, usage: linkbox <path/to/file>");
 
-    FILE *fp;
-    fp = fopen(argv[1], "rb");
-
     std::string str(argv[1]);
     size_t file_name_loc = str.find_last_of("/\\");
 
-    if (!net.sendFile(fp, str.substr(file_name_loc + 1).c_str()))
-        Utils::error("Failed to complete file transfer");
+    if (!net.sendFile(str.substr(file_name_loc + 1).c_str()))
+        Utils::error("Failed to complete file transfer", true);
 
     char server_response[256];
     if (!net.receive(server_response, sizeof server_response))
-        Utils::error("Failed to receive server response");
+        Utils::error("Failed to receive server response", true);
 
     Utils::printl(server_response);
 
-    fclose(fp);
     net.clean();
 
     return 0;
